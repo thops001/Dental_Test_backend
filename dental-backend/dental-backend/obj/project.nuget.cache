@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "830ZegEeOjk=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\leonc\\OneDrive\\Documents\\Dental_Test\\Dental_Test_backend\\dental-backend\\dental-backend\\dental-backend.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\leonc\\.nuget\\packages\\microsoft.aspnetcore.openapi\\10.0.9\\microsoft.aspnetcore.openapi.10.0.9.nupkg.sha512",
+    "C:\\Users\\leonc\\.nuget\\packages\\microsoft.openapi\\2.0.0\\microsoft.openapi.2.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}

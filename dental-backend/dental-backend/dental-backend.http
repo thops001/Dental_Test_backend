@@ -1,0 +1,6 @@
+@dental_backend_HostAddress = http://localhost:5042
+
+GET {{dental_backend_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
