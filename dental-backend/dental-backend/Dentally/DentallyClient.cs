@@ -28,8 +28,49 @@ public sealed class DentallyClient : IDentallyClient
         if (string.IsNullOrWhiteSpace(token))
             throw new DentallyApiException("A Dentally API token is required.", (int)HttpStatusCode.Unauthorized);
 
+        int maxAttempts = Math.Max(_options.CountReconciliationRetries, 0) + 1;
+        List<DentallyAppointment> dtos;
+
+        // Fetch the whole range, then reconcile the unique count against Dentally's reported total.
+        // Retry on mismatch (a record may have changed mid-sync); abort if it never reconciles.
+        for (int attempt = 1; ; attempt++)
+        {
+            var fetched = await FetchAndDeduplicateAsync(token, range, ct).ConfigureAwait(false);
+
+            if (!fetched.HasTotal || fetched.Items.Count == fetched.Total)
+            {
+                dtos = fetched.Items;
+                _logger.LogInformation("Fetched {Count} appointments (Dentally reported {Total}).",
+                    dtos.Count, fetched.HasTotal ? fetched.Total : dtos.Count);
+                break;
+            }
+
+            if (attempt >= maxAttempts)
+                throw new DentallyApiException(
+                    $"Sync count mismatch for {range.From:yyyy-MM-dd}..{range.To:yyyy-MM-dd}: fetched " +
+                    $"{fetched.Items.Count} unique appointment(s) but Dentally reported {fetched.Total} " +
+                    $"after {attempt} attempt(s). Aborting to avoid saving inaccurate data.");
+
+            _logger.LogWarning("Count mismatch (got {Actual}, expected {Expected}); retrying (attempt {Next}/{Max}).",
+                fetched.Items.Count, fetched.Total, attempt + 1, maxAttempts);
+        }
+
+        var names = await ResolveMissingPatientNamesAsync(token, dtos, ct).ConfigureAwait(false);
+
+        return dtos
+            .Select(dto => AppointmentMapper.ToAppointment(
+                dto, dto.PatientId.HasValue ? names.GetValueOrDefault(dto.PatientId.Value) : null))
+            .ToList();
+    }
+
+    private readonly record struct FetchedRange(List<DentallyAppointment> Items, int Total, bool HasTotal);
+
+    /// <summary>Fetches every page for the range concurrently and de-duplicates by appointment id.</summary>
+    private async Task<FetchedRange> FetchAndDeduplicateAsync(string token, DateRange range, CancellationToken ct)
+    {
         // Fetch page 1 first to discover the total record count, then derive the page count.
         var first = await FetchPageAsync(token, range, page: 1, ct).ConfigureAwait(false);
+        bool hasTotal = first.Meta is not null;
         int total = first.Meta?.Total ?? first.Appointments.Count;
         int pageSize = Math.Max(_options.PageSize, 1);
         int totalPages = total > 0 ? (int)Math.Ceiling((double)total / pageSize) : 1;
@@ -72,15 +113,7 @@ public sealed class DentallyClient : IDentallyClient
             }
         }
 
-        var names = await ResolveMissingPatientNamesAsync(token, dtos, ct).ConfigureAwait(false);
-
-        var result = dtos
-            .Select(dto => AppointmentMapper.ToAppointment(
-                dto, dto.PatientId.HasValue ? names.GetValueOrDefault(dto.PatientId.Value) : null))
-            .ToList();
-
-        _logger.LogInformation("Fetched {Count} appointments across {Pages} page(s).", result.Count, totalPages);
-        return result;
+        return new FetchedRange(dtos, total, hasTotal);
     }
 
     public async Task<AppointmentDetail?> GetAppointmentDetailAsync(string token, string id, CancellationToken ct)

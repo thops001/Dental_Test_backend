@@ -21,6 +21,13 @@ public sealed class DentallyOptions
     /// <summary>When true, look up missing patient names via GET /patients/{id} during a sync.</summary>
     public bool EnrichPatientNames { get; set; } = true;
 
+    /// <summary>
+    /// How many times to re-fetch the range when the unique appointment count does not match
+    /// Dentally's reported total (guards against records changing mid-sync). After these retries a
+    /// persisting mismatch aborts the sync.
+    /// </summary>
+    public int CountReconciliationRetries { get; set; } = 1;
+
     /// <summary>When true, serve generated data instead of calling the live API (see README).</summary>
     public bool UseMock { get; set; }
 }
